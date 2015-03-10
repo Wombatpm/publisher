@@ -27,9 +27,10 @@ end
 
 local errcount=0
 function err(...)
-  errcount =  errcount + 1
   local text = { ... }
   text[1] = gettext(text[1])
+  publisher.messages[#publisher.messages + 1] = { string.format(unpack(text)) , true }
+  errcount =  errcount + 1
   errorlog:write("Error: " .. string.format(unpack(text)) .. "\n")
   texio.write("Error: " .. string.format(unpack(text)) .. "\n")
 end
@@ -152,6 +153,7 @@ end
 --- Stop the data processing and write PDF. If `graceful` is not given or `false` then
 --- `os.exit()` gets called. This is the last function to be called.
 function exit(graceful)
+  tcp:close()
   log("Stop processing data")
   log("%d errors occurred",errcount)
   log("Duration: %3f seconds",os.gettimeofday() - starttime)
@@ -163,7 +165,15 @@ function exit(graceful)
   errorlog:write(string.format("luastate_bytes=%d",status.luastate_bytes / 1024))
   errorlog:close()
   statusfile = io.open(string.format("%s.status",tex.jobname),"wb")
-  statusfile:write(string.format("<Status>\n  <Errors>%d</Errors>\n</Status>",errcount))
+  statusfile:write(string.format("<Status>\n  <Errors>%d</Errors>\n",errcount))
+  for i=1,#publisher.messages do
+      if publisher.messages[i][2] then
+          statusfile:write(string.format("  <Error>%s</Error>\n", publisher.xml_escape(publisher.messages[i][1])))
+      else
+          statusfile:write(string.format("  <Message>%s</Message>\n", publisher.xml_escape(publisher.messages[i][1])))
+      end
+  end
+  statusfile:write("</Status>")
   statusfile:close()
   if not graceful then
     os.exit()
@@ -253,9 +263,7 @@ function main_loop()
   setup()
   -- global tcp object
   tcp = comm.listen()
-
   call(publisher.dothings)
-  tcp:close()
   exit(true)
 end
 

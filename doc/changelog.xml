@@ -1,6 +1,72 @@
 <changelog xmlns="urn:speedata.de:2014/changelog">
-  <chapter version="2.2">
-    <entry version="2.2.36" date="2015-01-15">
+  <chapter version="2.4">
+    <entry version="2.3.15" date="2015-03-09">
+      <en>API changes: make jobname configurable through parameter, better error messages.</en>
+      <de>API Änderungen: jobname ist per URL-Parameter konfigurierbar, bessere Fehlermeldungen</de>
+    </entry>
+    <entry version="2.3.14" date="2015-03-04">
+      <en>Server-mode: /v0/pdf/&lt;id&gt; returns the PDF</en>
+      <de>Server-Modus: /v0/pdf/&lt;id&gt; gibt das PDF zurück</de>
+    </entry>
+    <entry version="2.3.14" date="2015-03-03">
+      <en>Server-mode: add timestamp for /v0/publish/&lt;id&gt;</en>
+      <de>Server-Modus: Zeitstempel für /v0/publish/&lt;id&gt;</de>
+    </entry>
+    <entry version="2.3.12" date="2015-02-27">
+      <en>New api call /available -> 200 OK, /v0/publish returns 201</en>
+      <de>Neuer API Aufruf /available -> 200 OK, /v0/publish gibt 201 zurück</de>
+    </entry>
+    <entry version="2.3.11" date="2015-02-26">
+      <en>Grid distance horizontal can be set.</en>
+      <de>Rasterabstand horizontal kann eingestellt werden.</de>
+    </entry>
+    <entry version="2.3.10" date="2015-02-25">
+      <en>Bugfix: index entry without contents crashes the publisher.</en>
+      <de>Fehlerkorrektur: Indexeintrag ohne Inhalt lässt den Publisher abstürzen.</de>
+    </entry>
+    <entry version="2.3.9" date="2015-02-24">
+      <en>Bugfixes (sp server mode protocol file, infinite loop on malformed utf8 data)</en>
+      <de>Fehlerkorrekturen (sp server-Modus .protocol Datei, Endlosschleife bei fehlerhaften UTF8-Daten)</de>
+    </entry>
+    <entry version="2.3.9" date="2015-02-23">
+      <en>Empty attributes (attr="") are treated as nil. empty(@attr) now returns true().</en>
+      <de>Leere Attribute (attr="") werden als nil behandelt. empty(@attr) gibt jetzt true() zurück.</de>
+    </entry>
+    <entry version="2.3.8" date="2015-02-21">
+      <en>Rotate (steps of 90°) for images</en>
+      <de>Drehung in 90°-Schritten bei Bildern</de>
+    </entry>
+    <entry version="2.3.8" date="2015-02-21">
+      <en>New xpath function sd:aspectratio('imgname.png')</en>
+      <de>Neue XPath-Funktion sd:seitenverhältnis('bildname.png')</de>
+    </entry>
+    <entry version="2.3.8" date="2015-02-21">
+      <en>Simple if/then/else expressions in XPath</en>
+      <de>Einfache if/then/else Ausdrücke in XPath</de>
+    </entry>
+    <entry version="2.3.7" date="2015-02-19">
+      <en>Background text for table cells (td)</en>
+      <de>Hintergrundtext für Tabellenzellen (td)</de>
+    </entry>
+    <entry version="2.3.6" date="2015-02-12">
+      <en>publisher.status file contains the (error-)messages.</en>
+      <de>Die Datei publisher.status enthält die Nachrichten und Fehlermeldungen.</de>
+    </entry>
+    <entry version="2.3.4" date="2015-01-27">
+      <en>Bugfix: spot colors apply to stroking and non-stroking operations</en>
+      <de>Fehlerkorrektur: Sonderfarben gelten nun für Striche und Flächen</de>
+    </entry>
+    <entry version="2.3.3" date="2015-01-26">
+      <en>Some CSS for rule, direct color definition.</en>
+      <de>Ein paar CSS-Regeln für Linie, direkte Farbdefinition.</de>
+    </entry>
+    <entry version="2.3.2" date="2015-01-22">
+      <en>New server mode for remote publishing.</en>
+      <de>Neuer Server-Modus für entferntes Publishing.</de>
+    </entry>
+  </chapter>
+  <chapter version="2.2" date="2015-01-19">
+    <entry version="2.1.36" date="2015-01-15">
       <en>Add all CSS level 3 colors (see http://www.w3.org/TR/css3-color/ for a list)</en>
       <de>Alle CSS Level 3 Farben hinzugefügt (siehe http://www.w3.org/TR/css3-color/ für eine Liste)</de>
     </entry>

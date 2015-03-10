@@ -314,6 +314,23 @@ colors  = {
 -- An array of defined colors
 colortable = {"black","aliceblue", "orange", "rebeccapurple", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque", "blanchedalmond", "blue", "blueviolet", "brown", "burlywood", "cadetblue", "chartreuse", "chocolate", "coral", "cornflowerblue", "cornsilk", "crimson", "darkblue", "darkcyan", "darkgoldenrod", "darkgray", "darkgreen", "darkgrey", "darkkhaki", "darkmagenta", "darkolivegreen", "darkorange", "darkorchid", "darkred", "darksalmon", "darkseagreen", "darkslateblue", "darkslategray", "darkslategrey", "darkturquoise", "darkviolet", "deeppink", "deepskyblue", "dimgray", "dimgrey", "dodgerblue", "firebrick", "floralwhite", "forestgreen", "fuchsia", "gainsboro", "ghostwhite", "gold", "goldenrod", "gray", "green", "greenyellow", "grey", "honeydew", "hotpink", "indianred", "indigo", "ivory", "khaki", "lavender", "lavenderblush", "lawngreen", "lemonchiffon", "lightblue", "lightcoral", "lightcyan", "lightgoldenrodyellow", "lightgray", "lightgreen", "lightgrey", "lightpink", "lightsalmon", "lightseagreen", "lightskyblue", "lightslategray", "lightslategrey", "lightsteelblue", "lightyellow", "lime", "limegreen", "linen", "maroon", "mediumaquamarine", "mediumblue", "mediumorchid", "mediumpurple", "mediumseagreen", "mediumslateblue", "mediumspringgreen", "mediumturquoise", "mediumvioletred", "midnightblue", "mintcream", "mistyrose", "moccasin", "navajowhite", "navy", "oldlace", "olive", "olivedrab", "orangered", "orchid", "palegoldenrod", "palegreen", "paleturquoise", "palevioletred", "papayawhip", "peachpuff", "peru", "pink", "plum", "powderblue", "purple", "red", "rosybrown", "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell", "sienna", "silver", "skyblue", "slateblue", "slategray", "slategrey", "snow", "springgreen", "steelblue", "tan", "teal", "thistle", "tomato", "turquoise", "violet", "wheat", "white", "whitesmoke", "yellow", "yellowgreen"}
 
+setmetatable(colors,{  __index = function (tbl,key)
+    if string.sub(key,1,1) ~= "#" then
+        return nil
+    end
+    log("Defining color %q",key)
+    local color = {}
+    color.r, color.g, color.b = getrgb(key)
+    color.pdfstring = string.format("%g %g %g rg %g %g %g RG", color.r, color.g, color.b, color.r,color.g, color.b)
+    color.overprint = false
+    color.model = model
+    colortable[#colortable + 1] = key
+    color.index = #colortable
+    rawset(tbl,key,color)
+    return color
+end
+ })
+
 data_dispatcher = {}
 user_defined_functions = { last = 0}
 markers = {}
@@ -322,6 +339,7 @@ markers = {}
 current_group = nil
 current_grid = nil
 
+-- Used when bookmarks are inserted in a non-text context
 intextblockcontext = 0
 
 -- The array 'masterpages' has tables similar to these:
@@ -392,6 +410,7 @@ glue_stretch2.spec = node.new("glue_spec")
 glue_stretch2.spec.stretch = 2^16
 glue_stretch2.spec.stretch_order = 2
 
+messages = {}
 
 --- The dispatch table maps every element in the layout xml to a command in the `commands.lua` file.
 local dispatch_table = {
@@ -868,7 +887,7 @@ function load_xml(filename,filetype,options)
     local path = kpse.find_file(filename)
     if not path then
         err("Can't find XML file %q. Abort.\n",filename or "?")
-        os.exit(-1)
+        return
     end
     log("Loading %s %q",filetype or "file",path)
     return luxor.parse_xml_file(path, options,kpse.find_file)
@@ -931,6 +950,8 @@ function output_at( param )
     local r = grid or current_grid
     local wd = nodelist.width
     local ht = nodelist.height + nodelist.depth
+
+    -- For grid allocation
     local width_gridcells = r:width_in_gridcells_sp(wd)
     local height_gridcells  = r:height_in_gridcells_sp (ht)
 
@@ -1080,6 +1101,7 @@ function setup_page(pagenumber)
     local gridwidth, gridheight, nx, ny
     nx = options.gridcells_x
     ny = options.gridcells_y
+    dx = options.gridcells_dx
 
     local pagetype = detect_pagetype(thispage)
     if pagetype == false then return false end
@@ -1093,6 +1115,7 @@ function setup_page(pagenumber)
             gridheight = element_contents(j).height
             nx = element_contents(j).nx
             ny = element_contents(j).ny
+            dx = element_contents(j).ny
         end
     end
 
@@ -1104,7 +1127,7 @@ function setup_page(pagenumber)
         gridheight = options.gridheight
     end
 
-    current_page.grid:set_width_height({wd = gridwidth, ht = gridheight, nx = nx, ny = ny })
+    current_page.grid:set_width_height({wd = gridwidth, ht = gridheight, nx = nx, ny = ny, dx = dx })
 
     for _,j in ipairs(pagetype) do
         local eltname = elementname(j)
@@ -1191,6 +1214,67 @@ function new_page()
     end
     current_pagenumber = current_pagenumber + 1
     trace("page finished (new_page), setting current_pagenumber to %d",current_pagenumber)
+end
+
+-- a,b are both arrays of 6 numbers
+function concat_transformation( a, b )
+    local c = {}
+    c[1] = a[1] * b[1] + a[2] * b[3]
+    c[2] = a[1] * b[2] + a[2] * b[4]
+    c[3] = a[3] * b[1] + a[4] * b[3]
+    c[4] = a[3] * b[2] + a[4] * b[4]
+    c[5] = a[5] * b[1] + a[6] * b[3] + b[5]
+    c[6] = a[5] * b[2] + a[6] * b[4] + b[6]
+    return c
+end
+
+-- Place a text in the background
+function bgtext( box, textstring, angle, colorname, fontfamily )
+    local colorindex = colors[colorname].index
+    local boxheight, boxwidth = box.height, box.width
+    local angle_rad = -1 * math.rad(angle)
+    local sin = math.sin(angle_rad)
+    local cos = math.cos(angle_rad)
+    a = paragraph:new()
+    a:append(textstring, {fontfamily = fontfamily})
+    a:set_color(colorindex)
+    local textbox = node.hpack(a.nodelist)
+    local rotated_height = sin * textbox.width  + cos * textbox.height
+    local scale = boxheight  / rotated_height
+    local rotated_width  = sin * textbox.height + cos * textbox.width
+    local shift_right = sp_to_bp( (boxwidth - rotated_width * scale ) / 2)
+
+    -- rotate: [cos θ sin θ −sin θ cos θ 0 0 ]
+    local rotate_matrix = {   cos, sin, -1 * sin,   cos,           0, 0 }
+    local scale_matrix  = { scale,   0,        0, scale,           0, 0 }
+    local shift_matrix  = {     1,   0,        0,     1, shift_right, 0 }
+    local result_matrix
+    result_matrix = concat_transformation(rotate_matrix,scale_matrix)
+    result_matrix = concat_transformation(result_matrix,shift_matrix)
+    local matrixstring = string.format("%g %g %g %g %d %g",math.round(result_matrix[1],3),math.round(result_matrix[2],3),math.round(result_matrix[3],3),math.round(result_matrix[4],3),math.round(result_matrix[5],3),math.round(result_matrix[6],3))
+    local x = matrix( textbox, matrixstring,0,0 )
+    x = node.hpack(x)
+    x.width = 0
+    x.height = 0
+    box = node.insert_before(box,box,x)
+    box = node.hpack(box)
+    return box
+end
+
+-- Todo: size = contain, ...
+function bgimage( box, imagename )
+    local imginfo = new_image(imagename)
+    local image = img.copy(imginfo.img)
+    image.width = box.width
+    image.height = box.height
+
+    local imgnode = img.node(image)
+    local x = node.hpack(imgnode)
+    x.width = 0
+    x.height = 0
+    box = node.insert_before(box,box,x)
+    box = node.hpack(box)
+    return box
 end
 
 --- Draw a background behind the rectangular (box) object.
@@ -1529,17 +1613,14 @@ function read_attribute( layoutxml,dataxml,attname,typ,default,context)
     end
 
     local val,num,ret
-    local xpathstring = string.match(layoutxml[attname],"{(.-)}")
-    if xpathstring then
-        local ok, xp = xpath.parse_raw(dataxml,xpathstring,namespaces)
+    val = string.gsub(layoutxml[attname],"{(.-)}", function (x)
+        local ok, xp = xpath.parse_raw(dataxml,x,namespaces)
         if not ok then
             err(xp)
             return nil
         end
-        val = xpath.textvalue(xp[1])
-    else
-        val = layoutxml[attname]
-    end
+        return xpath.textvalue(xp[1])
+        end)
 
     if typ=="xpath" then
         return xpath.textvalue(xpath.parse(dataxml,val,namespaces))
@@ -1563,7 +1644,7 @@ function read_attribute( layoutxml,dataxml,attname,typ,default,context)
     elseif typ=="length_sp" then
         num = tonumber(val or default)
         if num then -- most likely really a number, we need to multiply with grid width
-            ret = current_grid.gridwidth * num
+            ret = current_grid:width_sp(num)
         else
             ret = val
         end
@@ -1642,12 +1723,11 @@ function parse_html( elt, parameter )
                     -- ignore
                 elseif type(elt[i]) == "table" then
                     -- remove last br in the list
-                    if elt[i][#elt[i]][".__name"] == "br" then
+                    if  elt[i][#elt[i]] and elt[i][#elt[i]][".__name"] == "br" then
                         elt[i][#elt[i]] = nil
                     end
-                    -- we should ignore br directly inside ul
                     a:append(node.copy(marker))
-                    local bul = bullet_hbox(tex.sp("5mm"))
+                    local bul = bullet_hbox(tex.sp("2.5mm"))
                     a:append(bul)
                     a:append(parse_html(elt[i]),{fontfamily = 0, bold = bold, italic = italic, underline = underline})
                     a:append("\n",{})
@@ -1661,9 +1741,13 @@ function parse_html( elt, parameter )
                 if type(elt[i]) == "string" then
                     -- ignore
                 elseif type(elt[i]) == "table" then
+                    -- remove last br in the list
+                    if elt[i][#elt[i]] and elt[i][#elt[i]][".__name"] == "br" then
+                        elt[i][#elt[i]] = nil
+                    end
                     counter = counter + 1
                     a:append(node.copy(marker))
-                    local num = number_hbox(counter,tex.sp("5mm"))
+                    local num = number_hbox(counter,tex.sp("4mm"))
                     a:append(num)
                     a:append(parse_html(elt[i]),{fontfamily = 0, bold = bold, italic = italic, underline = underline})
                     a:append("\n",{})
@@ -2406,6 +2490,23 @@ function register_color( name )
     return #colortable
 end
 
+function getrgb( colorvalue )
+    local r,g,b
+    local model = "rgb"
+    if #colorvalue == 7 then
+        r,g,b = string.match(colorvalue,"#?(%x%x)(%x%x)(%x%x)")
+        r = math.round(tonumber(r,16) / 255, 3)
+        g = math.round(tonumber(g,16) / 255, 3)
+        b = math.round(tonumber(b,16) / 255, 3)
+    elseif #colorvalue == 4 then
+        r,g,b = string.match(colorvalue,"#?(%x)(%x)(%x)")
+        r = math.round(tonumber(r,16) / 15, 3)
+        g = math.round(tonumber(g,16) / 15, 3)
+        b = math.round(tonumber(b,16) / 15, 3)
+    end
+    return r,g,b
+end
+
 -- color is an integer
 function set_color_if_necessary( nodelist,color )
     if not color then return nodelist end
@@ -2617,7 +2718,7 @@ function xml_escape( str )
         ["\""] = "&quot;",
         ["&"] = "&amp;",
     }
-    local ret = str.gsub(str,".",replace)
+    local ret = string.gsub(str,".",replace)
     return ret
 end
 
@@ -3039,7 +3140,7 @@ function set_image_length(len,width_or_height)
         return xpath.get_variable("__maxwidth") * current_grid.gridwidth
     elseif tonumber(len) then
         if width_or_height == "width" then
-            return len * current_grid.gridwidth
+            return current_grid:width_sp(len)
         else
             return len * current_grid.gridheight
         end

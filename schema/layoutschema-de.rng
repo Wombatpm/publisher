@@ -1424,6 +1424,11 @@
                <a:documentation>Warnung ausgeben, wenn das Bild eine geringere Auflösung bekommt als angegeben.</a:documentation>
             </attribute>
          </optional>
+         <optional>
+            <attribute name="drehen">
+               <a:documentation>Dreht das Bild in 90°-Schritten. Ein Winkel &gt; 0 dreht das Objekt im Uhrzeigersinn, ein Winkel &lt; 0 gegen den Uhrzeigersinn.</a:documentation>
+            </attribute>
+         </optional>
          <empty></empty>
       </element>
    </define>
@@ -2879,6 +2884,11 @@
                <a:documentation>Gibt die Anzahl der Rasterzellen in vertikaler Richtung an. Entweder ny oder höhe angeben.</a:documentation>
             </attribute>
          </optional>
+         <optional>
+            <attribute name="dx">
+               <a:documentation>Abstand zwischen zwei Rasterzellen (horizontal)</a:documentation>
+            </attribute>
+         </optional>
          <empty></empty>
       </element>
    </define>
@@ -3307,6 +3317,35 @@
          <optional>
             <attribute name="padding-right">
                <a:documentation>Bestimmt den Innenabstand einer Tabelle (rechts)</a:documentation>
+            </attribute>
+         </optional>
+         <optional>
+            <attribute name="background-text">
+               <a:documentation>Ein Text, der in den Tabellenhintergrund gelegt wird.</a:documentation>
+            </attribute>
+         </optional>
+         <optional>
+            <attribute name="background-textcolor">
+               <a:documentation>Die Farbe des Hintergrundtexts, falls vorhanden.</a:documentation>
+            </attribute>
+         </optional>
+         <optional>
+            <attribute name="background-transform">
+               <a:documentation>Die Transformation des Hintergrundtexts (falls vorhanden). Derzeit wird folgende Angabe unterstützt: rotate(-40deg) (und andere Winkel im Bereich 0 bis -90).</a:documentation>
+            </attribute>
+         </optional>
+         <optional>
+            <attribute name="background-size">
+               <a:documentation>Bestimmt die Größe des Hintergrundtexts. Derzeit ist nur &#39;contain&#39; erlaubt.</a:documentation>
+               <choice>
+                  <value>contain</value>
+                  <a:documentation>Der Text passt sich der Zellenhöhe an.</a:documentation>
+               </choice>
+            </attribute>
+         </optional>
+         <optional>
+            <attribute name="background-font-family">
+               <a:documentation>Setzt die Fontfamilie für den Hintergrundtext. Voreinstellung ist die Fontfamilie für die Tabelle.</a:documentation>
             </attribute>
          </optional>
          <zeroOrMore>

@@ -28,6 +28,42 @@ function M.pop_state()
     stack[#stack] = nil
 end
 
+function M.is_ifthenelse(dataxml,str,pos,ns)
+    local start,stop,num
+    start,stop = string.find(str,"^if%s+%(",pos)
+    if start then
+        local lvl = 1
+        local curpos,curstring = stop + 1, ""
+        while lvl > 0 do
+            curstring = string.sub(str,curpos,curpos)
+            if curstring == "(" then
+                lvl = lvl + 1
+            elseif curstring == ")" then
+                lvl = lvl - 1
+            end
+            curpos = curpos + 1
+        end
+        local eval = string.sub(str,stop + 1,curpos - 2)
+        M.push_state()
+        local ok = M.parse_internal(dataxml,eval,ns,1)[1]
+        M.pop_state()
+        local thenpart, elsepart
+        _, _, thenpart, elsepart = string.find(str,"then(.-)else(.*)")
+        local ret
+        M.push_state()
+        if ok then
+            ret = M.parse_internal(dataxml,thenpart,ns,1)[1]
+        else
+            ret = M.parse_internal(dataxml,elsepart,ns,1)[1]
+        end
+        M.pop_state()
+        M.tok = ret
+
+        return true
+    end
+    return false
+end
+
 function M.is_number(str,pos)
     local start,stop,num
     start, stop, num = string.find(str,"^([%-+]?%d+%.?%d*)%s*",pos)
@@ -45,6 +81,9 @@ function M.is_attribute(dataxml,str,pos)
     if attr then
         M.nextpos = stop + 1
         M.tok = dataxml[attr]
+        if type(M.tok) == "string" and #M.tok == 0 then
+            M.tok = nil
+        end
         if M.tok == nil then M.tok = nilmarker end
         return true
     end
@@ -217,6 +256,8 @@ function M.get_operand(dataxml,str,pos,ns)
     local start, stop
     if M.is_number(str,pos) then
          return tonumber(M.tok)
+    elseif M.is_ifthenelse(dataxml,str,pos,ns) then
+        return M.tok
     elseif M.is_attribute(dataxml,str,pos) then
         return M.tok
     elseif M.is_string(str,pos) then
@@ -830,6 +871,10 @@ end
 
 -- Tokenize is the first function we ask 'sp' for help
 M.default_functions["tokenize"] = function(dataxml,arg)
+    if arg[1] == nil or arg[2] == nil then
+        err("tokenize: one of the arguments is empty")
+        return ""
+    end
     comm.sendmessage('tok',arg[1])
     comm.sendmessage('str',arg[2])
     local msg = comm.get_string_messages()
@@ -838,6 +883,10 @@ M.default_functions["tokenize"] = function(dataxml,arg)
 end
 
 M.default_functions["replace"] = function(dataxml,arg)
+    if arg[1] == nil or arg[2] == nil or arg[3] == nil then
+        err("replace: one of the arguments is empty")
+        return ""
+    end
     comm.sendmessage('rep',arg[1])
     comm.sendmessage('str',arg[2])
     comm.sendmessage('str',arg[3])

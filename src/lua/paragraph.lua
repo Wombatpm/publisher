@@ -94,7 +94,8 @@ function Paragraph:min_width(textfomat_name)
     while head do
         -- there are some situations, where a list has no head (a bullet point)
         -- we should not bother checking them.
-        if head.head ~= nil then
+        -- LuaTeX 0.71 needs the extra 'node.has_field(head,"head")' check.
+        if node.has_field(head,"head") and head.head ~= nil then
             _w,_h,_d = node.dimensions(box.glue_set, box.glue_sign, box.glue_order,head.head)
             max = math.max(max,_w)
         end
@@ -234,20 +235,12 @@ function Paragraph:format(width_sp, default_textformat_name,options)
 
         publisher.fonts.pre_linebreak(nodelist)
 
-        local rows,indent
-        indent = node.has_attribute(nodelist,publisher.att_indent)
-        rows   = node.has_attribute(nodelist,publisher.att_rows)
+        -- both are set only for ul/ol lists
+        local indent = node.has_attribute(nodelist,publisher.att_indent)
+        local rows   = node.has_attribute(nodelist,publisher.att_rows)
 
-        if indent then
-            parameter.hangindent = indent
-        else
-            parameter.hangindent = 0
-        end
-        if rows then
-            parameter.hangafter = -1 * rows
-        else
-            parameter.hangafter = 0
-        end
+        parameter.hangindent =    indent or current_textformat.indent or 0
+        parameter.hangafter  =  ( rows   or current_textformat.rows   or 0 ) * -1
 
         parameter.disable_hyphenation = current_textformat.disable_hyphenation
 

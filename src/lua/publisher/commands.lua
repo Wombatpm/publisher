@@ -231,7 +231,7 @@ function commands.box( layoutxml,dataxml )
 
     -- Todo: document length or number
     if tonumber(width) ~= nil then
-        width  = current_grid.gridwidth  * width
+        width  = current_grid:width_sp(width)
     else
         width = tex.sp(width)
     end
@@ -398,7 +398,7 @@ function commands.define_color( layoutxml,dataxml )
                 else
                     op = ""
                 end
-                return string.format("%s /CS%d cs 1 scn ",op,tbl.colornum)
+                return string.format("%s /CS%d CS /CS%d cs 1 scn ",op,tbl.colornum, tbl.colornum)
                end
            end
         })
@@ -432,22 +432,13 @@ function commands.define_color( layoutxml,dataxml )
         local k = publisher.read_attribute(layoutxml,dataxml,"k","number")
         color.colornum = spotcolors.register(colorname,c,m,y,k)
     elseif value then
-        local r,g,b
-        if #value == 7 then
-            model = "rgb"
-            r,g,b = string.match(value,"#?(%x%x)(%x%x)(%x%x)")
-            color.r = math.round(tonumber(r,16) / 255, 3)
-            color.g = math.round(tonumber(g,16) / 255, 3)
-            color.b = math.round(tonumber(b,16) / 255, 3)
-            color.pdfstring = string.format("%s %g %g %g rg %g %g %g RG", op, color.r, color.g, color.b, color.r,color.g, color.b)
-        elseif #value == 4 then
-            model = "rgb"
-            r,g,b = string.match(value,"#?(%x)(%x)(%x)")
-            color.r = math.round(tonumber(r,16) / 15, 3)
-            color.g = math.round(tonumber(g,16) / 15, 3)
-            color.b = math.round(tonumber(b,16) / 15, 3)
-            color.pdfstring = string.format("%s %g %g %g rg %g %g %g RG", op, color.r, color.g, color.b, color.r,color.g, color.b)
+        if string.sub(value,1,1) ~= "#" then
+            err("DefineColor: value does not start with #, it is %q",tostring(value))
+            return nil
         end
+        color.r,color.g,color.b = publisher.getrgb(value)
+        color.pdfstring = string.format("%s %g %g %g rg %g %g %g RG", op, color.r, color.g, color.b, color.r,color.g, color.b)
+        model = "rgb"
     else
         err("Unknown color model: %s",model or "?")
     end
@@ -812,7 +803,7 @@ function commands.group( layoutxml,dataxml )
         end
         r:set_width_height({wd = grid.width, ht = grid.height})
     else
-        r:set_width_height({wd = publisher.current_page.grid.gridwidth, ht = publisher.current_page.grid.gridheight})
+        r:set_width_height({wd = publisher.current_page.grid.gridwidth, ht = publisher.current_page.grid.gridheight, dx = publisher.current_page.grid.grid_dx })
     end
     publisher.groups[groupname] = {
         contents = contents,
@@ -886,12 +877,13 @@ function commands.image( layoutxml,dataxml )
     local maxwidth  = publisher.read_attribute(layoutxml,dataxml,"maxwidth",   "rawstring")
     local maxheight = publisher.read_attribute(layoutxml,dataxml,"maxheight",  "rawstring")
     local clip      = publisher.read_attribute(layoutxml,dataxml,"clip",       "boolean")
-    local seite     = publisher.read_attribute(layoutxml,dataxml,"page",       "number")
+    local page      = publisher.read_attribute(layoutxml,dataxml,"page",       "number")
     local nat_box   = publisher.read_attribute(layoutxml,dataxml,"naturalsize","string")
     local max_box   = publisher.read_attribute(layoutxml,dataxml,"maxsize",    "rawstring")
     local filename  = publisher.read_attribute(layoutxml,dataxml,"file",       "rawstring")
     local url       = publisher.read_attribute(layoutxml,dataxml,"href",       "rawstring")
     local dpiwarn   = publisher.read_attribute(layoutxml,dataxml,"dpiwarn",    "number")
+    local rotate    = publisher.read_attribute(layoutxml,dataxml,"rotate",     "number")
 
     -- width = 100%  => take width from surrounding area
     -- auto on any value ({max,min}?{width,height}) is default
@@ -903,10 +895,25 @@ function commands.image( layoutxml,dataxml )
     if url ~= nil then
         imageinfo = publisher.get_image(url)
     else
-        imageinfo = publisher.new_image(filename,seite,max_box_intern)
+        imageinfo = publisher.new_image(filename,page,max_box_intern)
     end
 
     local image = img.copy(imageinfo.img)
+    if rotate then
+        if rotate == -90 or rotate == 270 then
+            image.transform = 1
+            image.height, image.width = image.width, image.height
+        elseif rotate == 90 or rotate == -270 then
+            image.transform = 3
+            image.height, image.width = image.width, image.height
+        elseif rotate == 180 or rotate == -180 then
+            image.transform = 2
+        elseif rotate == 0 or rotate == 360 or rotate == 360 then
+            image.transform = 0
+        else
+            err("Image/rotate: rotation must be between -360 and 360 and given in multiple of 90")
+        end
+    end
 
     height    = publisher.set_image_length(height,   "height") or image.height
     width     = publisher.set_image_length(width,    "width" ) or image.width
@@ -1162,7 +1169,6 @@ function commands.makeindex( layoutxml,dataxml )
     local xpath       = publisher.read_attribute(layoutxml,dataxml,"select",  "xpathraw")
     local sortkey     = publisher.read_attribute(layoutxml,dataxml,"sortkey", "rawstring")
     local sectionname = publisher.read_attribute(layoutxml,dataxml,"section", "rawstring")
-
     publisher.stable_sort(xpath,function(elta,eltb)
         return string.lower(elta[sortkey]) < string.lower(eltb[sortkey])
     end)
@@ -1171,23 +1177,28 @@ function commands.makeindex( layoutxml,dataxml )
     local lastfirstletter = ""
     local ret = {}
     for i=1,#xpath do
-        local startletter = string.upper(string.sub(xpath[i][sortkey],1,1))
-
-        if startletter ~= lastfirstletter then
-            -- create a new section
-            section = { [".__local_name"] = sectionname, name = startletter }
-            ret[#ret + 1] = section
-        end
-        -- Add current entry to this section
-        -- The current implementation only concatenates page numbers
-        if xpath[i].name == lastname then
-            xpath[lastindex].page = xpath[lastindex].page .. ", " .. xpath[i].page
+        local tmp = string.sub(xpath[i][sortkey],1,1)
+        if tmp == nil or tmp == "" then
+            err("Incorrect index entry - no contents?")
         else
-            lastindex = i
-            lastname = xpath[i].name
-            section[#section + 1] = xpath[i]
+            local startletter = string.upper(tmp)
+
+            if startletter ~= lastfirstletter then
+                -- create a new section
+                section = { [".__local_name"] = sectionname, name = startletter }
+                ret[#ret + 1] = section
+            end
+            -- Add current entry to this section
+            -- The current implementation only concatenates page numbers
+            if xpath[i].name == lastname then
+                xpath[lastindex].page = xpath[lastindex].page .. ", " .. xpath[i].page
+            else
+                lastindex = i
+                lastname = xpath[i].name
+                section[#section + 1] = xpath[i]
+            end
+            lastfirstletter = startletter
         end
-        lastfirstletter = startletter
     end
     return ret
 end
@@ -1271,6 +1282,7 @@ function commands.message( layoutxml, dataxml )
     if errcond then
         err("%q", tostring(contents) or "?")
     else
+        publisher.messages[#publisher.messages + 1] = { contents, false }
         log("Message: %q", tostring(contents) or "?")
     end
 end
@@ -1987,8 +1999,13 @@ function commands.rule( layoutxml,dataxml )
     local length        = publisher.read_attribute(layoutxml,dataxml,"length",     "rawstring")
     local rulewidth     = publisher.read_attribute(layoutxml,dataxml,"rulewidth",  "rawstring")
     local color         = publisher.read_attribute(layoutxml,dataxml,"color",      "rawstring")
+    local class         = publisher.read_attribute(layoutxml,dataxml,"class","rawstring")
+    local id            = publisher.read_attribute(layoutxml,dataxml,"id",   "rawstring")
 
-    local colorname = color or "black"
+    local css_rules = publisher.css:matches({element = "rule", class=class,id=id}) or {}
+
+    local colorname = color or css_rules["background-color"] or "black"
+    -- #hexvalue -> colorname
 
     if tonumber(length) then
         if direction == "horizontal" then
@@ -2003,11 +2020,11 @@ function commands.rule( layoutxml,dataxml )
     end
     length = sp_to_bp(length)
 
-    rulewidth = rulewidth or "1pt"
+    rulewidth = rulewidth or css_rules["height"] or "1pt"
     if tonumber(rulewidth) then
         if direction == "horizontal" then
             rulewidth = publisher.current_grid.gridwidth * rulewidth
-        elseif direction == "vertical" or direction == "vertikal" then
+        elseif direction == "vertical" then
             rulewidth = publisher.current_grid.gridheight * rulewidth
         end
     else
@@ -2127,6 +2144,9 @@ function commands.set_grid(layoutxml)
     local ht = publisher.read_attribute(layoutxml,dataxml,"height","rawstring")
     local nx = publisher.read_attribute(layoutxml,dataxml,"nx",    "rawstring")
     local ny = publisher.read_attribute(layoutxml,dataxml,"ny",    "rawstring")
+    local dx = publisher.read_attribute(layoutxml,dataxml,"dx",    "length_sp")
+
+    publisher.options.gridcells_dx = dx
 
     local _nx = tonumber(nx)
     local _ny = tonumber(ny)
@@ -2585,6 +2605,14 @@ function commands.td( layoutxml,dataxml )
                 tab["border-bottom"] = v
             elseif k == "text-align" then
                 tab.align = v
+            elseif k == "background-text" then
+                local x = string.match(v,"\"(.*)\"")
+                tab["background-text"] = x
+            elseif k == "background-size" then
+                if v ~= "contain" then
+                    err("The background size of Td must be 'contain'")
+                end
+                tab["background-size"] = "contain"
             else
                 tab[k] = v
             end
@@ -2600,7 +2628,12 @@ function commands.td( layoutxml,dataxml )
         ["padding-right"]    = "length",
         ["padding-bottom"]   = "length",
         ["padding-left"]     = "length",
-        ["backgroundcolor"]  = "rawstring",
+        ["backgroundcolor"]      = "rawstring",
+        ["background-text"]      = "rawstring",
+        ["background-textcolor"] = "rawstring",
+        ["background-transform"] = "rawstring",
+        ["background-size"]        = "rawstring",
+        ["background-font-family"] = "rawstring",
         ["valign"]           = "string",
         ["border-left"]      = "length",
         ["border-right"]     = "length",
@@ -2623,6 +2656,11 @@ function commands.td( layoutxml,dataxml )
     local tmp = publisher.read_attribute(layoutxml,dataxml,"align","string",nil,"align")
     if tmp then
         tab.align = tmp
+    end
+
+    if tab["background-transform"] then
+        local angle = string.match(tab["background-transform"],"rotate%((.-)deg%)")
+        tab["background-angle"] = tonumber(angle)
     end
 
     if tab.padding then

@@ -66,7 +66,6 @@ end
 
 desc "Generate documentation"
 task :doc => [:sphelper] do
-	rm_rf builddir.join("manual")
 	sh "#{installdir}/bin/sphelper doc"
 	puts "done"
 end
@@ -155,6 +154,31 @@ task :qa do
 	sh "#{installdir}/bin/sp compare #{installdir}/qa"
 end
 
+# The environment variable LUATEX_BIN must point to a directory with the following structure
+# ├── darwin
+# │   ├── amd64
+# │   └── 386
+# ├── linux
+# │   ├── amd64
+# │   └── 386
+# └── windows
+#     ├── amd64
+#     └── 386
+#
+# and each of these amd64/386 directories look like this:
+# ├── 0_79_1
+# │   ├── kpathsea620w64.dll
+# │   ├── lua52w64.dll
+# │   ├── luatex.dll
+# │   ├── luatex.exe
+# │   └── msvcr100.dll
+# └── default -> 0_79_1/
+#
+# The task looks for a directory named "default" and uses the binary files in that directory
+desc "Make ZIP files for all platforms and installer for windows"
+task :dist => [:sphelper] do
+	sh "#{installdir}/bin/sphelper dist windows/amd64 windows/386 linux/amd64 linux/386 darwin/amd64 darwin/386"
+end
 
 desc "Make ZIP files - set NODOC=true for stripped zip file"
 task :zip => [:sphelper] do
@@ -191,6 +215,11 @@ task :zip => [:sphelper] do
 		File.open(targetbin + "/texmf.cnf", "w") { |file| file.write("#dummy\n") }
 		platform = "windows"
 		execfilename = "luatex.exe"
+	elsif test(?f,srcbindir +"/sdluatex.exe") then
+		cp_r(Dir.glob(srcbindir +"/*") ,targetbin)
+		File.open(targetbin + "/texmf.cnf", "w") { |file| file.write("#dummy\n") }
+		platform = "windows"
+		execfilename = "sdluatex.exe"
 	elsif test(?f,srcbindir +"/luatex") then
 		cp_r(srcbindir +"/luatex","#{targetbin}/sdluatex")
 	end
@@ -247,7 +276,7 @@ end
 
 
 desc "Prepare a .deb directory"
-task :deb do
+task :deb => [:sphelper] do
 	srcbindir = ENV["LUATEX_BIN"] || ""
 	if ! test(?d,srcbindir) then
 		puts "Environment variable LUATEX_BIN does not exist.\nMake sure it points to a path which contains `luatex'.\nUse like this: rake zip LUATEX_BIN=/path/to/bin\nAborting"
@@ -266,6 +295,8 @@ task :deb do
 	targetsw     = targetshare.join("speedata-publisher", "sw")
 
 	rm_rf destdir
+	Rake::Task["doc"].execute
+
 	mkdir_p targetbin
 	mkdir_p targetdoc
 	mkdir_p targetfonts
@@ -274,14 +305,18 @@ task :deb do
 	mkdir_p targetschema
 	mkdir_p targetsw
 
-	Rake::Task["doc"].execute
+
 	cp_r "#{builddir}/manual/.",targetdoc
 
 	platform = nil
 	arch = nil
 	execfilename = "sdluatex"
+
 	if test(?f, srcbindir +"/sdluatex") then
 		cp_r(srcbindir +"/sdluatex",targetbin)
+	else
+		puts "copying failed, #{srcbindir}"
+		next
 	end
 	cmd = "file #{targetbin}/#{execfilename}"
 	res = `#{cmd}`.gsub(/^.*luatex.*:/,'')

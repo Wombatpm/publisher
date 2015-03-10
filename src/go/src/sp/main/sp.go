@@ -33,6 +33,7 @@ var (
 	layoutoptions         map[string]string
 	variables             map[string]string
 	installdir            string
+	bindir                string
 	libdir                string
 	srcdir                string
 	path_to_documentation string // Where the documentation (index.html) is
@@ -59,7 +60,9 @@ var (
 // which is a valid XML file. Currently the only field is "Errors"
 // with the number of errors occured during the publisher run.
 type status struct {
-	Errors int
+	XMLName xml.Name `xml:"Status"`
+	Error   []string
+	Errors  int
 }
 
 func init() {
@@ -76,20 +79,20 @@ func init() {
 	layoutoptions = make(map[string]string)
 	options = make(map[string]string)
 	defaults = map[string]string{
-		"layout":     "layout.xml",
-		"jobname":    "publisher",
+		"address":    "127.0.0.1",
 		"data":       "data.xml",
-		"runs":       "1",
-		"quiet":      "false",
-		"port":       "5266",
 		"fontpath":   "",
 		"imagecache": filepath.Join(os.TempDir(), "sp", "images"),
+		"jobname":    "publisher",
+		"layout":     "layout.xml",
+		"port":       "5266",
+		"quiet":      "false",
+		"runs":       "1",
 	}
 
 	// The problem now is that we don't know where the executable file is
 	// if it's in the PATH, it has no ../ prefix
 	// if it is relative, make an absolute path from it.
-	var bindir string
 	if execdir := filepath.Base(os.Args[0]); execdir == os.Args[0] {
 		// most likely an absolute path
 		bindir, err = exec.LookPath(execdir)
@@ -104,6 +107,11 @@ func init() {
 			log.Fatal(err)
 		}
 	}
+	bindir, err = filepath.Abs(bindir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	installdir = filepath.Join(bindir, "..")
 
 	if version == "" {
@@ -200,13 +208,13 @@ func getOption(optionname string) string {
 // Open the given file with the system's default program
 func openFile(filename string) {
 	opencommand := getOption("opencommand")
-	cmdname := strings.SplitN(opencommand+" "+filename, " ", 2)
-	cmd := exec.Command(cmdname[0], cmdname[1])
-	err := cmd.Start()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = cmd.Wait()
+	cmdname := strings.SplitN(opencommand, " ", -1)
+	cmdname = append(cmdname, filepath.Base(filename))
+	cmd := exec.Command(cmdname[0], cmdname[1:]...)
+	// windows doesn't like quotation marks on the filename argument. So we change into the
+	// directory
+	cmd.Dir = filepath.Dir(filename)
+	err := cmd.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -299,7 +307,9 @@ func run(cmdline string) (success bool) {
 	}
 	err = cmd.Start()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		success = false
+		return
 	}
 	running_processes = append(running_processes, cmd.Process)
 
@@ -316,12 +326,13 @@ func run(cmdline string) (success bool) {
 		io.Copy(stdin, os.Stdin)
 		stdin.Close()
 	}
-
 	err = cmd.Wait()
 
 	if err != nil {
 		showDuration()
 		log.Print(err)
+		success = false
+		return
 	}
 	success = cmd.ProcessState.Success()
 	return
@@ -428,8 +439,9 @@ func removeLogfile() {
 }
 
 func runPublisher() (exitstatus int) {
-	log.Print("run speedata publisher")
+	log.Print("Run speedata publisher")
 	defer removeLogfile()
+
 	exitstatus = 0
 	save_variables()
 
@@ -473,13 +485,27 @@ func runPublisher() (exitstatus int) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	go daemon.Run()
 	for i := 1; i <= runs; i++ {
-		go daemon.Run()
 		cmdline := fmt.Sprintf(`"%s" --interaction nonstopmode "--jobname=%s" --ini "--lua=%s" publisher.tex %q %q %q`, exec_name, jobname, inifile, layoutname, dataname, layoutoptions_cmdline)
 		if !run(cmdline) {
 			exitstatus = 1
+			v := status{}
+			v.Errors = 1
+			v.Error = append(v.Error, "Error executing sdluatex")
+			data, err := xml.Marshal(v)
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = ioutil.WriteFile(fmt.Sprintf("%s.status", jobname), data, 0600)
+			if err != nil {
+				log.Fatal(err)
+			}
+			os.Exit(-1)
+			break
 		}
 	}
+	// todo: DRY code -> server/status
 	data, err := ioutil.ReadFile(fmt.Sprintf("%s.status", jobname))
 	if err == nil {
 		v := new(status)
@@ -538,6 +564,7 @@ or see the web page
 
 func main() {
 	op := optionparser.NewOptionParser()
+	op.On("--address IPADDRESS", "Address to be used for the server mode. Defaults to 127.0.0.1", options)
 	op.On("--autoopen", "Open the PDF file (MacOS X and Linux only)", options)
 	op.On("-c NAME", "--config", "Read the config file with the given NAME. Default: 'publisher.cfg'", &configfilename)
 	op.On("--credits", "Show credits and exit", showCredits)
@@ -558,7 +585,7 @@ func main() {
 	op.On("--runs NUM", "Number of publishing runs ", options)
 	op.On("--startpage NUM", "The first page number", layoutoptions)
 	op.On("--show-gridallocation", "Show the allocated grid cells", layoutoptions)
-	op.On("--systemfonts", "Use system fonts", &useSystemFonts)
+	op.On("--systemfonts", "Use system fonts (not Win XP)", &useSystemFonts)
 	op.On("--trace", "Show debug messages and some tracing PDF output", layoutoptions)
 	op.On("--timeout SEC", "Exit after SEC seconds", options)
 	op.On("-v", "--var VAR=VALUE", "Set a variable for the publishing run", setVariable)
@@ -572,7 +599,7 @@ func main() {
 	op.Command("doc", "Open documentation")
 	op.Command("list-fonts", "List installed fonts (use together with --xml for copy/paste)")
 	op.Command("run", "Start publishing (default)")
-	op.Command("server", "Run as http-api server on port 5266 (configure with --port)")
+	op.Command("server", "Run as http-api server on localhost port 5266 (configure with --address and --port)")
 	op.Command("watch", "Start watchdog / hotfolder")
 	err := op.Parse()
 	if err != nil {
@@ -772,13 +799,7 @@ func main() {
 			log.Fatal("Problem with watch dir in section [hotfolder].")
 		}
 	case "server":
-		go daemon.Run()
-		go runServer(getOption("port"))
-		cmdline := fmt.Sprintf(`"%s" --interaction nonstopmode --ini "--lua=%s" publisher.tex ___server___`, getExecutablePath(), inifile)
-		if !run(cmdline) {
-			exitstatus = 1
-		}
-
+		runServer(getOption("port"), getOption("address"))
 	default:
 		log.Fatal("unknown command:", command)
 	}

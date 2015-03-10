@@ -1,4 +1,4 @@
--- generated from genluatranslations.go (2014-11-21 15:13)
+-- generated from genluatranslations.go (2015-02-26 13:40)
 -- do not edit!
 module(...)
 return {
@@ -165,6 +165,7 @@ return {
         ["minbreite"] = "minwidth",
         ["minhöhe"] = "minheight",
         ["dpiwarnung"] = "dpiwarn",
+        ["drehen"] = "rotate",
         },
       ["Kursiv"] = { "Italic",
         ["schriftart"] = "fontface",
@@ -326,6 +327,7 @@ return {
         ["höhe"] = "height",
         ["nx"] = "nx",
         ["ny"] = "ny",
+        ["dx"] = "dx",
         },
       ["Zuweisung"] = { "SetVariable",
         ["variable"] = "variable",
@@ -385,6 +387,11 @@ return {
         ["padding-bottom"] = "padding-bottom",
         ["padding-left"] = "padding-left",
         ["padding-right"] = "padding-right",
+        ["background-text"] = "background-text",
+        ["background-textcolor"] = "background-textcolor",
+        ["background-transform"] = "background-transform",
+        ["background-size"] = "background-size",
+        ["background-font-family"] = "background-font-family",
         },
       ["Tlinie"] = { "Tablerule",
         ["linienstärke"] = "rulewidth",
